@@ -407,7 +407,7 @@ All reference documents are available in the `Description/` folder:
 
 Svetlana Sannikova
 
-**Master 2 GENIOMHE**, Université d’Évry Paris-Saclay
+**Master 2 GENIOMHE-AI**, Université d’Évry Paris-Saclay
 
 ## Contact
 
