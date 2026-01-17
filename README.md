@@ -99,7 +99,8 @@ This preprocessing pipeline guarantees reproducible data splits, consistent feat
 
 ### 2. Baseline Supervised Training
 
-A fully supervised multilayer perceptron (MLP) classifier is implemented as a baseline reference model. This baseline relies exclusively on labeled gene expression data and does not use any form of pretraining.
+A fully supervised multilayer perceptron (MLP) classifier is implemented as a baseline reference model. This baseline relies exclusively on labeled gene expression data and does not use any form of pretraining. This baseline training procedure is implemented in `baseline.py` and executed via `run_baseline.py`.
+
 
 **Model architecture:**
 - Input: standardized gene expression features;
