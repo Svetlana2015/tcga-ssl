@@ -1,8 +1,57 @@
 # Self-Supervised Learning for Gene Expression Data
 
+## Abstract
+Gene expression data are characterized by extremely high dimensionality (≈20,000 genes per sample) and a limited availability of labeled samples, which makes purely supervised learning approaches difficult to apply effectively. In this project, we investigate a self-supervised learning (SSL) framework for transcriptomic data that leverages biologically informed pathway activity profiles as auxiliary training signals.
+
+We propose to use pathway profile prediction, computed via single-sample Gene Set Enrichment Analysis (ssGSEA), as a biologically motivated pretext task for self-supervised pretraining. This objective is combined with masked gene reconstruction and contrastive learning to encourage the model to learn structured and transferable representations from unlabeled RNA-seq data. The learned encoder is subsequently evaluated on a downstream cancer type classification task.
+
+Experimental results demonstrate that self-supervised pretraining substantially improves classification performance compared to a fully supervised baseline, particularly in low-label regimes. These findings highlight the value of incorporating biological prior knowledge into self-supervised representation learning for high-dimensional transcriptomic data.
+
+---
+
+## Approach Overview (Pipeline Diagram)
+
+**Self-supervised pretraining**
+
+
+
+RNA-seq sample (genes)
+        |
+        v
+  Shared Encoder
+        |
+        v
+   +----+---------------------+----------------------+
+   |                          |                      |
+   v                          v                      v
+Pathway Prediction     Masked Gene Reconstruction   Contrastive Learning
+   (ssGSEA)                 (MAE-style)               (NT-Xent)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 This repository contains the full codebase to reproduce the experiments presented in the project  
 **"Self-Supervised Learning for Gene Expression Data"**  
-*(Master 2 GENIOMHE-AI, Université d’Évry Paris-Saclay)*.
+*(Master 2 GENIOMHE, Université d’Évry Paris-Saclay)*.
 
 The project investigates how **self-supervised learning (SSL)** with biologically informed objectives improves cancer type classification from high-dimensional RNA-seq data, especially in low-label regimes.
 
