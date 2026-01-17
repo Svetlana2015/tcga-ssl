@@ -37,7 +37,132 @@ After pretraining, the encoder is reused for downstream cancer classification vi
 
 ## Data Preparation
 
-All datasets are derived from TCGA RNA-seq data.
+All data used in this project are derived from The Cancer Genome Atlas (TCGA): data are available [here](https://drive.google.com/drive/folders/1U4I8qabkJ_Oo6l1CmBLvju2uY54gCSdM?usp=sharing)
+
+- Data type: bulk RNA-seq gene expression
+- Features: ~19,800 gene expression values per sample
+- Task: multi-class cancer type classification
+
+Dataset splits:
+- Pretraining (unlabeled): ~7,300 samples
+- Fine-tuning (labeled): 1,000 samples
+- Test set: 1,000 samples
+
+Labels correspond to cancer types (TCGA annotations)
+
+## Project Workflow and Experimental Steps
+
+This project follows a complete and reproducible pipeline for self-supervised learning on high-dimensional transcriptomic data. All stages described below were implemented and experimentally evaluated.
+
+### 1. Data Processing and Dataset Preparation
+
+Raw RNA-seq gene expression data and clinical labels are preprocessed using a dedicated pipeline implemented in `preprocessing.py`. The goal of this stage is to construct clean, standardized, and reproducible datasets for self-supervised pretraining, supervised fine-tuning, and evaluation.
+
+**Input data requirements:**
+- A gene expression table in Parquet format containing a `caseID` column and gene expression features;
+- A labels table in Parquet format containing `cases` and `cancer_type` columns.
+
+The following preprocessing steps are applied:
+
+- **Sample identifier alignment:**  
+  Sample identifiers are extracted from the labels table (`cases` field) and matched with the `caseID` column in the expression matrix. Only samples present in both tables are retained.
+
+- **Merge of expression and labels:**  
+  Gene expression features and cancer type labels are merged into a single dataframe to ensure consistent sample alignment.
+
+- **Feature selection:**  
+  All columns except `caseID` and `cancer_type` are treated as gene expression features. No additional gene filtering is applied at this stage.
+
+- **Stratified dataset splitting:**  
+  The merged dataset is split into three non-overlapping subsets using stratified sampling on `cancer_type`:
+  - **Test set:** fixed number of samples (default: 1,000),
+  - **Fine-tuning set:** fixed number of samples (default: 1,000),
+  - **Pretraining set:** remaining samples or a user-defined subset (default: ~7,000).
+  
+  Stratification ensures that class proportions are preserved across all splits.
+
+- **Feature scaling:**  
+  Gene expression features are standardized using `StandardScaler`.  
+  Importantly, the scaler is **fitted only on the pretraining dataset** and then applied to the fine-tuning and test sets to avoid data leakage.
+
+- **Output generation:**  
+  The following datasets are saved in Parquet format:
+  - `pretrain.parquet` (unlabeled, used for self-supervised learning),
+  - `finetune.parquet` (labeled, used for supervised fine-tuning),
+  - `test.parquet` (labeled, used exclusively for evaluation).
+  
+  Optionally, the full merged dataset (`full.parquet`) and unused samples (`unused.parquet`) are also saved for traceability.
+
+This preprocessing pipeline guarantees reproducible data splits, consistent feature scaling, and strict separation between training and evaluation data.
+
+
+---
+
+### 2. Baseline Supervised Training
+A fully supervised multilayer perceptron (MLP) classifier was implemented as a baseline reference model. The baseline:
+
+- Uses raw gene expression vectors as input;
+- Consists of two hidden layers with ReLU activations;
+- Is trained exclusively on labeled data without any form of pretraining.
+
+To evaluate sensitivity to label availability, the model was trained using increasing subsets of labeled data (from 100 to 1,000 samples). Stratified sampling was applied to preserve class distributions. Performance was evaluated on a held-out test set using classification accuracy, reported as mean ± standard deviation across multiple runs.
+
+This baseline establishes a reference point for assessing the benefits of self-supervised pretraining.
+
+---
+
+### 3. Pathway Score Computation (ssGSEA Pipeline)
+To introduce biological prior knowledge, pathway activity profiles were computed using single-sample Gene Set Enrichment Analysis (ssGSEA):
+
+- KEGG pathway gene sets were obtained in GMT format;
+- Gene expression matrices were transposed to match ssGSEA input requirements (genes × samples);
+- ssGSEA was applied using rank-based normalization;
+- Computation was performed in batches to ensure memory efficiency;
+- Normalized Enrichment Scores (NES) were extracted as pathway activity values.
+
+The resulting pathway score matrices (samples × pathways) were saved to disk and reused throughout the experiments to ensure reproducibility.
+
+---
+
+### 4. Self-Supervised Pretraining
+A self-supervised learning (SSL) framework was implemented to learn representations from unlabeled RNA-seq data. A shared encoder network was pretrained using three complementary objectives:
+
+- **Pathway profile prediction**: regression of ssGSEA pathway scores to introduce biologically informed supervision;
+- **Masked gene reconstruction**: MAE-style reconstruction of randomly masked gene expression values to promote robustness;
+- **Contrastive learning**: SimCLR-style contrastive objective applied to augmented views of the same sample.
+
+All objectives share a single encoder and are optimized jointly using a weighted loss function. Pretraining was performed for multiple epochs on unlabeled data, and training convergence was monitored through loss curves.
+
+---
+
+### 5. Fine-Tuning Process
+After self-supervised pretraining, the learned encoder was evaluated on a downstream cancer type classification task using two strategies:
+
+- **Frozen encoder (linear probing)**: only a classifier head is trained on top of the pretrained encoder;
+- **Unfrozen encoder (full fine-tuning)**: both encoder and classifier are updated using labeled data.
+
+Experiments were conducted using different proportions of labeled training data (10% to 100%) to study data efficiency. Performance was evaluated on an independent test set, enabling direct comparison with the supervised baseline.
+
+---
+
+### 6. Visualization and Model Comparison
+Visualization and exploratory analysis were used throughout the project to interpret both raw data and learned representations:
+
+- PCA was applied to highly variable genes to assess global structure and intrinsic dimensionality;
+- t-SNE and UMAP were used to visualize nonlinear structure and sample clustering;
+- Learning curves were generated to compare baseline and SSL-based models across label regimes.
+
+These analyses demonstrate that self-supervised pretraining improves representation quality, data efficiency, and robustness, particularly in low-label settings.
+
+
+
+
+
+
+
+
+
+
 
 ### Preprocessing steps
 
@@ -54,6 +179,7 @@ All datasets are derived from TCGA RNA-seq data.
    - pathway activity profiles are computed using ssGSEA  
    - computed scores are stored and reused for reproducibility  
 
+Tutorial: use the [gseapy](https://gseapy.readthedocs.io/en/latest/gseapy_example.html#Single-Sample-GSEA-example) with [Mygene](https://docs.mygene.info/projects/mygene-py/en/latest/) package for the gene mapping. 
 ---
 
 ## Training and Evaluation Pipeline
@@ -117,8 +243,6 @@ The strong performance of the frozen encoder indicates that the learned represen
 - Results are evaluated on a limited set of cancer types.
 
 
-
-
 ## Available Documents
 
 All reference documents are available in the `Description/` folder:
@@ -126,7 +250,7 @@ All reference documents are available in the `Description/` folder:
 - **Project proposal (course description):** `Description/Project_Proposal.pdf`
 - **Course guidelines / initial project description:** `Description/Course_Guidelines.pdf`
 - **Final project report:** `Description/Final_Report.pdf`
-
+- **Poster:** Poster
 ---
 
 ## Authors
@@ -135,7 +259,10 @@ Svetlana Sannikova
 
 **Master 2 GENIOMHE-AI**, Université d’Évry Paris-Saclay
 
+## Contact
 
+kevin.dradjat@univ-evry.fr
+sannikovasvetlana777@gmail.com
 
 
 
@@ -168,80 +295,6 @@ Recommended environment:
 
 Main dependencies:
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-This repository contains the full codebase to reproduce the experiments presented in the project  
-**"Self-Supervised Learning for Gene Expression Data"**  
-*(Master 2 GENIOMHE, Université d’Évry Paris-Saclay)*.
-
-The project investigates how **self-supervised learning (SSL)** with biologically informed objectives improves cancer type classification from high-dimensional RNA-seq data, especially in low-label regimes.
-
----
-
-## 1. Project Overview
-
-**Task:**  
-Multi-class cancer type classification from gene expression (RNA-seq) data
-
-**Domain:**  
-Healthcare / Bioinformatics
-
-**Key challenge:**  
-~20,000 gene features with limited labeled samples
-
-**Proposed solution:**  
-Self-supervised pretraining on unlabeled data using biologically motivated objectives
-
----
-#### Project description
-* Document:available [here](https://github.com/ai4precision-medicine/2526-m2geniomhe-SSL-tcga/blob/main/description/Projet%20GENIOHME.pdf).
-* Slides: available [here](https://github.com/ai4precision-medicine/2526-m2geniomhe-SSL-tcga/blob/main/description/project_proposal_DRADJAT-1.pdf)
-
-## SSL Framework
-
-The SSL framework combines:
-
-- **Pathway activity prediction** (ssGSEA, KEGG)
-- **Masked gene reconstruction** (MAE-style)
-- **Contrastive representation learning** (SimCLR-style)
-
-
-#### Data 
-All data used in this project are derived from The Cancer Genome Atlas (TCGA): data are available [here](https://drive.google.com/drive/folders/1U4I8qabkJ_Oo6l1CmBLvju2uY54gCSdM?usp=sharing)
-
-All data used in this project are derived from The Cancer Genome Atlas (TCGA).
-
-- Data type: bulk RNA-seq gene expression
-- Features: ~19,800 gene expression values per sample
-- Task: multi-class cancer type classification
-
-Dataset splits:
-- Pretraining (unlabeled): ~7,300 samples
-- Fine-tuning (labeled): 1,000 samples
-- Test set: 1,000 samples
-
-Labels correspond to cancer types (TCGA annotations)
-
-####  Gene set enrichment score / Pathway score computation
-Tutorial: use the [gseapy](https://gseapy.readthedocs.io/en/latest/gseapy_example.html#Single-Sample-GSEA-example) with [Mygene](https://docs.mygene.info/projects/mygene-py/en/latest/) package for the gene mapping.
 
 ###  Steps 
 - Data processing and cleaning
@@ -345,4 +398,4 @@ python -m scripts.run_preprocessing --expr data\raw\mRNA_coding.omics.parquet --
 
 
 
-Contact: kevin.dradjat@univ-evry.fr
+
