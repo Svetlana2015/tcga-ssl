@@ -21,6 +21,27 @@ def _read_table(path: Path) -> pd.DataFrame:
 
 
 def _align_by_index(df_a: pd.DataFrame, df_b: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Align two tables by sample IDs stored in the index.
+
+    Robust to common pitfalls:
+    - int vs str indices (e.g., 0..N vs "0".."N")
+    - leading/trailing whitespace
+    - duplicated indices
+    """
+    df_a = df_a.copy()
+    df_b = df_b.copy()
+
+    # Normalize indices (fixes int vs str mismatches)
+    df_a.index = df_a.index.astype(str).str.strip()
+    df_b.index = df_b.index.astype(str).str.strip()
+
+    # Drop duplicate indices (keep first)
+    if df_a.index.has_duplicates:
+        df_a = df_a[~df_a.index.duplicated(keep="first")]
+    if df_b.index.has_duplicates:
+        df_b = df_b[~df_b.index.duplicated(keep="first")]
+
     # If the indices are the same, then ok.
     if df_a.index.equals(df_b.index):
         return df_a, df_b
@@ -29,7 +50,7 @@ def _align_by_index(df_a: pd.DataFrame, df_b: pd.DataFrame) -> tuple[pd.DataFram
     common = df_a.index.intersection(df_b.index)
     if len(common) == 0:
         raise ValueError(
-            "Genes and pathways have no common sample IDs in index.\n"
+            "Genes and pathways have no common sample IDs in index (after normalization).\n"
             "Make sure both tables use the same sample IDs as index."
         )
 
