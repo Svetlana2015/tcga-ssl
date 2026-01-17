@@ -14,18 +14,18 @@ Experimental results demonstrate that self-supervised pretraining substantially 
 **Self-supervised pretraining**
 
 
-
+```text
 RNA-seq sample (genes)
         |
         v
-  Shared Encoder
+  Shared Gene Expression Encoder
         |
         v
-   +----+---------------------+----------------------+
-   |                          |                      |
-   v                          v                      v
-Pathway Prediction     Masked Gene Reconstruction   Contrastive Learning
-   (ssGSEA)                 (MAE-style)               (NT-Xent)
+   +----+---------------------------+---------------------------+
+   |                                |                           |
+   v                                v                           v
+Pathway Activity Prediction   Masked Gene Reconstruction   Contrastive Learning
+       (ssGSEA)                     (MAE-style)                 (NT-Xent)
 
 
 
