@@ -26,8 +26,147 @@ RNA-seq sample (genes)
    v                                v                           v
 Pathway Activity Prediction   Masked Gene Reconstruction   Contrastive Learning
        (ssGSEA)                     (MAE-style)                 (NT-Xent)
+```
 
 
+After pretraining, the encoder is reused for downstream cancer classification via:
+- frozen encoder (linear probing),
+- or full fine-tuning with labeled data.
+
+---
+
+## Data Preparation
+
+All datasets are derived from TCGA RNA-seq data.
+
+### Preprocessing steps
+
+1. **Gene ID mapping**  
+   Ensembl IDs (ENSG) are mapped to gene symbols using `mygene`.
+
+   - unmapped genes are removed  
+   - duplicate gene symbols are aggregated by mean  
+   - the resulting feature space is consistent across datasets  
+
+2. **Pathway profile computation**
+
+   - KEGG gene sets are used  
+   - pathway activity profiles are computed using ssGSEA  
+   - computed scores are stored and reused for reproducibility  
+
+---
+
+## Training and Evaluation Pipeline
+
+### 1. Baseline supervised model
+
+- MLP with two hidden layers (512, 256)
+- trained on varying numbers of labeled samples (100 → 1000)
+- evaluation metric: classification accuracy
+
+### 2. Self-supervised pretraining
+
+- encoder trained on unlabeled RNA-seq data
+- three self-supervised objectives:
+  - pathway profile prediction (MSE loss)
+  - masked gene reconstruction
+  - contrastive learning (NT-Xent)
+- combined loss function:
+
+```text
+L = α · L_path + β · L_mae + γ · L_ctr
+
+α = 1.0
+β = 0.3
+γ = 0.1
+````
+
+### 3. Fine-tuning
+
+- frozen encoder (linear probing)
+- unfrozen encoder (full fine-tuning)
+- evaluation across different proportions of labeled data
+
+---
+
+## Results
+
+### Key findings
+
+- The supervised baseline struggles in low-label regimes.
+- SSL-pretrained representations significantly outperform the baseline when limited labeled data are available.
+- Even with a frozen encoder, SSL representations provide strong performance.
+- Full fine-tuning yields the best results when sufficient labeled data are available.
+
+These results demonstrate improved data efficiency and robustness obtained through self-supervised pretraining with biologically informed objectives.
+
+---
+
+## Analysis and Discussion
+
+The experiments highlight the importance of representation learning for high-dimensional transcriptomic data.  
+Pathway activity prediction provides a meaningful biological inductive bias by encouraging the encoder to capture coordinated gene programs rather than isolated gene effects.
+
+The combination of pathway-level supervision, masked reconstruction, and contrastive learning enables the model to learn representations that are both biologically interpretable and transferable.  
+The strong performance of the frozen encoder indicates that the learned representations generalize well and are not overly dependent on task-specific fine-tuning.
+
+### Limitations
+
+- Only bulk RNA-seq data are considered.
+- Pathway definitions depend on curated databases (e.g., KEGG).
+- Results are evaluated on a limited set of cancer types.
+
+
+
+
+## Available Documents
+
+All reference documents are available in the `Description/` folder:
+
+- **Project proposal (course description):** `Description/Project_Proposal.pdf`
+- **Course guidelines / initial project description:** `Description/Course_Guidelines.pdf`
+- **Final project report:** `Description/Final_Report.pdf`
+
+---
+
+## Authors
+
+Svetlana Sannikova
+
+**Master 2 GENIOMHE-AI**, Université d’Évry Paris-Saclay
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+## Reproducibility Instructions
+
+### Environment Setup
+Recommended environment:
+- Python ≥ 3.9
+- PyTorch ≥ 2.0
+- CPU or GPU supported
+
+Main dependencies:
 
 
 
