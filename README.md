@@ -35,7 +35,7 @@ After pretraining, the encoder is reused for downstream cancer classification vi
 
 ---
 
-## Data Preparation
+## Dataset
 
 All data used in this project are derived from The Cancer Genome Atlas (TCGA): data are available [here](https://drive.google.com/drive/folders/1U4I8qabkJ_Oo6l1CmBLvju2uY54gCSdM?usp=sharing)
 
@@ -49,6 +49,8 @@ Dataset splits:
 - Test set: 1,000 samples
 
 Labels correspond to cancer types (TCGA annotations)
+
+---
 
 ## Project Workflow and Experimental Steps
 
@@ -95,256 +97,228 @@ The following preprocessing steps are applied:
 
 This preprocessing pipeline guarantees reproducible data splits, consistent feature scaling, and strict separation between training and evaluation data.
 
-
----
-
 ### 2. Baseline Supervised Training
-A fully supervised multilayer perceptron (MLP) classifier was implemented as a baseline reference model. The baseline:
 
-- Uses raw gene expression vectors as input;
-- Consists of two hidden layers with ReLU activations;
-- Is trained exclusively on labeled data without any form of pretraining.
+A fully supervised multilayer perceptron (MLP) classifier is implemented as a baseline reference model. This baseline relies exclusively on labeled gene expression data and does not use any form of pretraining.
 
-To evaluate sensitivity to label availability, the model was trained using increasing subsets of labeled data (from 100 to 1,000 samples). Stratified sampling was applied to preserve class distributions. Performance was evaluated on a held-out test set using classification accuracy, reported as mean ± standard deviation across multiple runs.
+**Model architecture:**
+- Input: standardized gene expression features;
+- Two fully connected hidden layers:
+  - 512 units + ReLU activation,
+  - 256 units + ReLU activation;
+- Optional dropout regularization;
+- Output layer with one unit per cancer class.
 
-This baseline establishes a reference point for assessing the benefits of self-supervised pretraining.
+**Training procedure:**
+- The model is trained on the labeled fine-tuning dataset (`finetune.parquet`);
+- Cancer type labels are encoded using `LabelEncoder`;
+- For each experiment, a subset of the training data is selected using stratified sampling to preserve class proportions;
+- Training subset sizes range from 100 samples up to the full fine-tuning set, with increments of 100 samples;
+- For each training size, multiple independent runs are performed with different random seeds.
 
----
+**Feature scaling:**
+- Gene expression features are standardized using `StandardScaler`;
+- The scaler is fitted on the selected training subset and applied to the test set for each run.
 
-### 3. Pathway Score Computation (ssGSEA Pipeline)
-To introduce biological prior knowledge, pathway activity profiles were computed using single-sample Gene Set Enrichment Analysis (ssGSEA):
+**Optimization and evaluation:**
+- Optimizer: Adam;
+- Loss function: cross-entropy loss;
+- Training duration: fixed number of epochs per run;
+- Evaluation metric: classification accuracy computed on an independent test set.
 
-- KEGG pathway gene sets were obtained in GMT format;
-- Gene expression matrices were transposed to match ssGSEA input requirements (genes × samples);
-- ssGSEA was applied using rank-based normalization;
-- Computation was performed in batches to ensure memory efficiency;
-- Normalized Enrichment Scores (NES) were extracted as pathway activity values.
+For each training size, the mean accuracy and standard deviation across runs are reported. This baseline serves as a reference to quantify the benefits of self-supervised pretraining in subsequent experiments.
 
-The resulting pathway score matrices (samples × pathways) were saved to disk and reused throughout the experiments to ensure reproducibility.
+### 3. Gene Identifier Mapping (ENSG → Gene Symbol)
 
----
+Raw RNA-seq gene expression matrices use Ensembl gene identifiers (ENSG format), whereas most biological pathway databases (e.g., KEGG) are defined at the gene symbol level. Therefore, a dedicated gene identifier mapping step is applied before pathway analysis.
 
-### 4. Self-Supervised Pretraining
-A self-supervised learning (SSL) framework was implemented to learn representations from unlabeled RNA-seq data. A shared encoder network was pretrained using three complementary objectives:
+The mapping procedure is implemented in `mapping.py` and consists of the following steps:
 
-- **Pathway profile prediction**: regression of ssGSEA pathway scores to introduce biologically informed supervision;
-- **Masked gene reconstruction**: MAE-style reconstruction of randomly masked gene expression values to promote robustness;
-- **Contrastive learning**: SimCLR-style contrastive objective applied to augmented views of the same sample.
+- **Detection of gene columns:**  
+  Columns whose names start with `ENSG` are identified as gene expression features. All other columns (e.g., `cancer_type`) are treated as metadata and preserved.
 
-All objectives share a single encoder and are optimized jointly using a weighted loss function. Pretraining was performed for multiple epochs on unlabeled data, and training convergence was monitored through loss curves.
+- **Sample identifier handling:**  
+  If a `caseID` column is present, it is moved to the dataframe index to ensure stable sample alignment across processing steps.
 
----
+- **Removal of Ensembl version suffixes:**  
+  Ensembl identifiers may include version suffixes (e.g., `ENSG00000141510.12`). These suffixes are removed to ensure compatibility with annotation databases.
 
-### 5. Fine-Tuning Process
-After self-supervised pretraining, the learned encoder was evaluated on a downstream cancer type classification task using two strategies:
+- **Querying gene annotations:**  
+  Gene identifiers are mapped to gene symbols using the **MyGeneInfo** annotation service (`mygene`), querying the `ensembl.gene` scope for human genes.
 
-- **Frozen encoder (linear probing)**: only a classifier head is trained on top of the pretrained encoder;
-- **Unfrozen encoder (full fine-tuning)**: both encoder and classifier are updated using labeled data.
+- **Handling unmapped genes:**  
+  Gene identifiers that cannot be mapped to valid gene symbols are removed from the feature space.
 
-Experiments were conducted using different proportions of labeled training data (10% to 100%) to study data efficiency. Performance was evaluated on an independent test set, enabling direct comparison with the supervised baseline.
+- **Aggregation of duplicate mappings:**  
+  When multiple Ensembl IDs map to the same gene symbol, the corresponding expression columns are aggregated by computing their mean.
 
----
+- **Gene symbol normalization:**  
+  All gene symbols are converted to uppercase and stripped of extra whitespace to ensure consistent matching with pathway resources.
 
-### 6. Visualization and Model Comparison
-Visualization and exploratory analysis were used throughout the project to interpret both raw data and learned representations:
-
-- PCA was applied to highly variable genes to assess global structure and intrinsic dimensionality;
-- t-SNE and UMAP were used to visualize nonlinear structure and sample clustering;
-- Learning curves were generated to compare baseline and SSL-based models across label regimes.
-
-These analyses demonstrate that self-supervised pretraining improves representation quality, data efficiency, and robustness, particularly in low-label settings.
-
-
-
-
-
-
-
-
-
-
-
-### Preprocessing steps
-
-1. **Gene ID mapping**  
-   Ensembl IDs (ENSG) are mapped to gene symbols using `mygene`.
-
-   - unmapped genes are removed  
-   - duplicate gene symbols are aggregated by mean  
-   - the resulting feature space is consistent across datasets  
-
-2. **Pathway profile computation**
-
-   - KEGG gene sets are used  
-   - pathway activity profiles are computed using ssGSEA  
-   - computed scores are stored and reused for reproducibility  
+After mapping, the resulting gene expression matrices contain a unified and biologically consistent set of gene symbols while preserving all metadata columns. The mapped datasets are saved to disk for downstream analysis.
 
 Tutorial: use the [gseapy](https://gseapy.readthedocs.io/en/latest/gseapy_example.html#Single-Sample-GSEA-example) with [Mygene](https://docs.mygene.info/projects/mygene-py/en/latest/) package for the gene mapping. 
----
 
-## Training and Evaluation Pipeline
+### 4. Pathway Score Computation (ssGSEA)
 
-### 1. Baseline supervised model
+To incorporate biological prior knowledge into the learning process, pathway activity profiles are computed from gene expression data using single-sample Gene Set Enrichment Analysis (ssGSEA).
 
-- MLP with two hidden layers (512, 256)
-- trained on varying numbers of labeled samples (100 → 1000)
-- evaluation metric: classification accuracy
+This step is implemented in `pathways.py` and orchestrated via `make_pathways.py`. The procedure is as follows:
 
-### 2. Self-supervised pretraining
+- **Pathway gene set loading:**  
+  KEGG pathway definitions are provided in GMT format and parsed into a dictionary mapping pathway names to gene symbol lists.
 
-- encoder trained on unlabeled RNA-seq data
-- three self-supervised objectives:
-  - pathway profile prediction (MSE loss)
-  - masked gene reconstruction
-  - contrastive learning (NT-Xent)
-- combined loss function:
+- **Preparation of ssGSEA input:**  
+  The gene expression matrix is filtered to include only gene expression features. Metadata columns (e.g., `cancer_type`) are excluded from ssGSEA computation.
+
+- **Matrix transposition:**  
+  The expression matrix is transposed to match ssGSEA input requirements:
+  - rows: genes  
+  - columns: samples
+
+- **Batch-wise ssGSEA computation:**  
+  ssGSEA is applied in batches of samples to ensure memory efficiency. Rank-based normalization is used, and normalized enrichment scores (NES) are extracted.
+
+- **Aggregation of pathway scores:**  
+  For each batch, ssGSEA results are reshaped into a pathway-by-sample matrix. All batches are concatenated to form a complete pathway activity matrix.
+
+- **Reattachment of metadata:**  
+  After pathway computation, metadata columns (including `cancer_type`) are reattached to the pathway score matrix to enable downstream supervised experiments.
+
+The final output is a pathway activity matrix with shape *(samples × pathways)*, where each value represents the normalized enrichment score of a biological pathway for a given sample. These pathway profiles serve as biologically informed targets during self-supervised pretraining.
+
+
+### 5. Self-Supervised Pretraining
+
+Self-supervised pretraining is performed to learn meaningful representations from unlabeled RNA-seq data by leveraging biologically informed and generic self-supervised objectives. This step is implemented in `ssl_pretrain.py` and executed via `run_ssl_pretrain.py`.
+
+**Input data:**
+- Gene expression matrix (samples × genes), after preprocessing and gene identifier mapping;
+- Pathway activity matrix (samples × pathways), computed using ssGSEA.
+Both matrices are aligned by sample identifiers to ensure consistent correspondence.
+
+**Model architecture:**
+- A shared MLP encoder with three hidden layers (1024 → 512 → latent dimension);
+- Layer normalization applied to the latent representation;
+- Three task-specific heads sharing the same encoder:
+  - a pathway regression head,
+  - a masked gene reconstruction (MAE-style) decoder,
+  - a projection head for contrastive learning.
+
+**Self-supervised objectives:**
+- **Pathway profile prediction:**  
+  The encoder is trained to regress ssGSEA pathway activity scores using mean squared error loss, providing biologically informed supervision.
+- **Masked gene reconstruction:**  
+  A fixed fraction of gene features is randomly masked, and the model learns to reconstruct only the masked values.
+- **Contrastive learning:**  
+  Two augmented views of each sample are generated using Gaussian noise and random feature dropout. A SimCLR-style NT-Xent loss encourages similar samples to have closer latent representations.
+
+**Training procedure:**
+- All three objectives are optimized jointly using a weighted sum of losses:
 
 ```text
 L = α · L_path + β · L_mae + γ · L_ctr
-
-α = 1.0
-β = 0.3
-γ = 0.1
 ````
+- Default loss weights are α = 1.0, β = 0.3, γ = 0.1;
+- Training is performed for a fixed number of epochs using the Adam optimizer;
+- The final pretrained model weights and training configuration are saved to disk for reproducibility.
 
-### 3. Fine-tuning
+This pretraining stage produces an encoder that captures structured, biologically relevant patterns in transcriptomic data without using any class labels.
 
-- frozen encoder (linear probing)
-- unfrozen encoder (full fine-tuning)
-- evaluation across different proportions of labeled data
+### 6. Fine-Tuning and Linear Probing
+
+The quality of the self-supervised representations is evaluated on a downstream cancer type classification task through fine-tuning and linear probing. This step is implemented in `ssl_finetune.py` and executed via `run_ssl_finetune.py`.
+
+**Setup:**
+- A pretrained encoder is loaded from the self-supervised pretraining stage;
+- A linear classification head is added on top of the encoder;
+- Cancer type labels are encoded using a shared `LabelEncoder` fitted on the fine-tuning dataset.
+
+**Two evaluation strategies are considered:**
+- **Frozen encoder (linear probing):**  
+  The encoder weights are fixed, and only the linear classifier is trained.
+- **Unfrozen encoder (full fine-tuning):**  
+  Both the encoder and classifier are updated during training.
+
+**Experimental protocol:**
+- Fine-tuning is performed using different proportions of labeled training data, ranging from 10% to 100%;
+- For each proportion, multiple independent runs are conducted using stratified sampling to preserve class distributions;
+- Models are trained for a fixed number of epochs using the Adam optimizer and cross-entropy loss;
+- Performance is evaluated on a held-out test set using classification accuracy.
+
+**Outputs:**
+- Classification accuracies (mean and standard deviation) for each training proportion;
+- Saved model checkpoints for each run and the best-performing model;
+- CSV files summarizing fine-tuning results for frozen and unfrozen settings.
+
+This evaluation protocol enables a direct comparison between supervised baselines and self-supervised representations, highlighting the benefits of SSL in low-label regimes.
+
+
+### 7. Model Summary, Visualization, and Comparison
+
+To support model interpretability and facilitate comparison between supervised and self-supervised approaches, dedicated utilities are provided for model inspection and result visualization. These steps are implemented in `summary.py` and `visualization.py`.
+
+#### Model Architecture Summary
+To document the complexity and structure of the implemented models, architectural summaries are generated using `torchsummary`:
+
+- **Baseline MLP summary:**  
+  The baseline classifier architecture is summarized by automatically inferring the input dimensionality and number of output classes from the fine-tuning dataset. This provides a layer-by-layer overview of the supervised reference model.
+
+- **SSL encoder summary:**  
+  After self-supervised pretraining, only the encoder component (encoder layers + layer normalization) is extracted and summarized. This allows direct inspection of the learned representation model that is reused for downstream tasks.
+
+These summaries provide transparency regarding model depth, parameter counts, and architectural differences between supervised and self-supervised approaches.
+
+#### Performance Visualization
+
+Several visualization routines are used to analyze and compare model performance:
+
+- **Baseline learning curve:**  
+  Classification accuracy of the supervised MLP is plotted as a function of the training subset size, reporting mean performance and standard deviation across multiple runs.
+
+- **SSL vs baseline comparison:**  
+  Training curves for the baseline model, SSL with frozen encoder (linear probing), and SSL with unfrozen encoder (full fine-tuning) are plotted on a common axis using training proportions.
+
+- **Variability visualization:**  
+  Shaded regions corresponding to ±1 standard deviation are displayed where available to highlight variability across runs.
+
+All plots can be displayed interactively or saved to disk for inclusion in the final report and scientific poster.
 
 ---
 
 ## Results
 
-### Key findings
+The main experimental results are summarized as follows:
 
-- The supervised baseline struggles in low-label regimes.
-- SSL-pretrained representations significantly outperform the baseline when limited labeled data are available.
-- Even with a frozen encoder, SSL representations provide strong performance.
-- Full fine-tuning yields the best results when sufficient labeled data are available.
+- The purely supervised baseline model exhibits limited performance when trained on small labeled datasets.
+- Self-supervised pretraining substantially improves classification accuracy in low-label regimes.
+- SSL representations remain effective even when the encoder is frozen, indicating strong transferability.
+- Full fine-tuning of the pretrained encoder yields the highest performance when sufficient labeled data are available.
 
-These results demonstrate improved data efficiency and robustness obtained through self-supervised pretraining with biologically informed objectives.
+These results demonstrate that biologically informed self-supervised learning improves data efficiency and robustness for cancer classification from high-dimensional RNA-seq data.
 
 ---
 
 ## Analysis and Discussion
 
-The experiments highlight the importance of representation learning for high-dimensional transcriptomic data.  
-Pathway activity prediction provides a meaningful biological inductive bias by encouraging the encoder to capture coordinated gene programs rather than isolated gene effects.
+The experimental results highlight the importance of representation learning for high-dimensional transcriptomic data.  
+Directly modeling gene-level expression vectors is challenging due to the large feature space and limited availability of labeled samples. In this context, pathway activity prediction introduces a biologically meaningful inductive bias that encourages the encoder to focus on coordinated gene programs rather than isolated gene-level variations.
 
-The combination of pathway-level supervision, masked reconstruction, and contrastive learning enables the model to learn representations that are both biologically interpretable and transferable.  
-The strong performance of the frozen encoder indicates that the learned representations generalize well and are not overly dependent on task-specific fine-tuning.
+By using pathway profiles as a self-supervised pretext task, the model is guided toward learning structured latent representations that reflect underlying biological processes. The combination of pathway-level supervision with masked gene reconstruction and contrastive learning further promotes robustness and invariance to noise, leading to transferable representations.
+
+The strong performance observed in the frozen-encoder (linear probing) setting indicates that the learned representations generalize well and are not overly dependent on task-specific fine-tuning. This suggests that the self-supervised encoder captures reusable biological signals that are relevant across different downstream classification scenarios.
+
+These findings support the use of biologically informed self-supervised learning as an effective strategy for improving data efficiency and generalization in transcriptomic analysis.
+
+---
 
 ### Limitations
 
-- Only bulk RNA-seq data are considered.
-- Pathway definitions depend on curated databases (e.g., KEGG).
-- Results are evaluated on a limited set of cancer types.
+- The study is limited to bulk RNA-seq data and does not address single-cell transcriptomic variability.
+- Pathway activity profiles depend on curated gene set databases (e.g., KEGG), which may not fully capture all biological processes.
+- Experimental evaluation is restricted to a limited number of cancer types, which may constrain the generalizability of the conclusions.
 
-
-## Available Documents
-
-All reference documents are available in the `Description/` folder:
-
-- **Project proposal (course description):** `Description/Project_Proposal.pdf`
-- **Course guidelines / initial project description:** `Description/Course_Guidelines.pdf`
-- **Final project report:** `Description/Final_Report.pdf`
-- **Poster:** Poster
 ---
-
-## Authors
-
-Svetlana Sannikova
-
-**Master 2 GENIOMHE-AI**, Université d’Évry Paris-Saclay
-
-## Contact
-
-kevin.dradjat@univ-evry.fr
-sannikovasvetlana777@gmail.com
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-## Reproducibility Instructions
-
-### Environment Setup
-Recommended environment:
-- Python ≥ 3.9
-- PyTorch ≥ 2.0
-- CPU or GPU supported
-
-Main dependencies:
-
-
-###  Steps 
-- Data processing and cleaning
-- Baseline training
-- Pathway score computation (GSEA) pipeline
-- Pre-training process
-- Fine-tuning process
-- Visualization and comparison
-
-### Installation
-
-```bash
-git clone -b Svetlana---branch https://github.com/ai4precision-medicine/2526-m2geniomhe-SSL-tcga.git
-cd 2526-m2geniomhe-SSL-tcga
-python -m venv env
-env\Scripts\activate   # On Linux / macOS:source env/bin/activate
-pip install --upgrade pip
-pip install -r requirements.txt
-```
-
-### Usage
-All the scripts used for pretraining and finetuning with the differents methods are available on the scripts folder.
-
-Baseline:
-Example command
-``` 
-python -m scripts.run_baseline --epochs 50 --n_repeats 5 --out results.npz
-```
-
-Making pathways:
-Example command
-``` 
-python -m scripts.make_pathways --input data/test.parquet --gmt data/kegg.gmt --case_id_col caseID --name test
-```
-
-Pretraining:
-Example command
-```
-python -m scripts.run_ssl_pretrain --genes data/results_mapped/pretrain_mapped.parquet --pathways data/pathways/pretrain_pathways.parquet --save_dir experiments/ssl_pretrain
-
-```
-
-Finetuning:
-Example command
-
-```
-python -m scripts.run_ssl_finetune --finetune data/results_mapped/finetune_mapped.parquet --test data/results_mapped/test_mapped.parquet --weights experiments/ssl_pretrain/ssl_model.pth --config experiments/ssl_pretrain/config.json --unfreeze_encoder
-````
-
-
 ## Installation
 
 ### 1) Clone repository
@@ -367,7 +341,7 @@ conda activate tcga-ssl
 
 ```bash
 python -m venv .venv
-.\.venv\Scripts\activate
+.\.venv\Scripts\activate      # On Linux / macOS: source .venv/bin/activate
 ```
 
 ### 3) Install dependencies
@@ -376,24 +350,68 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-### 4) Run pipeline (example)
+### 4) Run pipeline 
 
-```bash
-python scripts/make_pathways.py
-python scripts/run_ssl_pretrain.py
-python scripts/run_ssl_finetune.py
-python scripts/run_baseline.py
+All the scripts used for pretraining and finetuning with the differents methods are available on the scripts folder.
+
+Preprocessing
+Example command
+```
+python -m scripts.run_preprocessing --expr data\raw\mRNA_coding.omics.parquet --labels data\raw\label.parquet --out_dir data --test_n 1000 --finetune_n 1000 --pretrain_n 7000
 ```
 
-python -m scripts.run_preprocessing --expr data\raw\mRNA_coding.omics.parquet --labels data\raw\label.parquet --out_dir data --test_n 1000 --finetune_n 1000 --pretrain_n 7000
+Baseline:
+Example command
+``` 
+python -m scripts.run_baseline --epochs 50 --n_repeats 5 --out results.npz
+```
 
+Making pathways:
+Example command
+``` 
+python -m scripts.make_pathways --input data/pretrain.parquet --gmt data/kegg.gmt --case_id_col caseID --name pretrain 
+```
 
+Pretraining:
+Example command
+```
+python -m scripts.run_ssl_pretrain --genes data/results_mapped/pretrain_mapped.parquet --pathways data/pathways/pretrain_pathways.parquet --save_dir experiments/ssl_pretrain
 
-## Notes
+```
+
+Finetuning:
+Example command
+
+```
+python -m scripts.run_ssl_finetune --finetune data/results_mapped/finetune_mapped.parquet --test data/results_mapped/test_mapped.parquet --weights experiments/ssl_pretrain/ssl_model.pth --config experiments/ssl_pretrain/config.json --unfreeze_encoder
+````
+### Notes
 
 * The scripts expect input files in `data/` (e.g., `kegg.gmt`, `pretrain.parquet`, `finetune.parquet`, `test.parquet`).
 * Outputs are written to `data/results_mapped/`, `data/pathways/`, and `results/`.
 
+---
+
+## Available Documents
+
+All reference documents are available in the `Description/` folder:
+
+- **Project proposal (course description):** `Description/Project_Proposal.pdf`
+- **Course guidelines / initial project description:** `Description/Course_Guidelines.pdf`
+- **Final project report:** `Description/Final_Report.pdf`
+- **Poster:** Poster
+---
+
+## Authors
+
+Svetlana Sannikova
+
+**Master 2 GENIOMHE-AI**, Université d’Évry Paris-Saclay
+
+## Contact
+
+kevin.dradjat@univ-evry.fr
+sannikovasvetlana777@gmail.com
 
 
 
