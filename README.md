@@ -104,5 +104,53 @@ python -m scripts.run_ssl_finetune --finetune data/results_mapped/finetune_mappe
 ````
 
 
+## Installation
+
+### 1) Clone repository
+
+```bash
+git clone https://github.com/Svetlana2015/tcga-ssl.git
+cd tcga-ssl
+```
+
+### 2) Create environment (recommended)
+
+**Conda**
+
+```bash
+conda create -n tcga-ssl python=3.10 -y
+conda activate tcga-ssl
+```
+
+**or venv (Windows)**
+
+```bash
+python -m venv .venv
+.\.venv\Scripts\activate
+```
+
+### 3) Install dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+### 4) Run pipeline (example)
+
+```bash
+python scripts/make_pathways.py
+python scripts/run_ssl_pretrain.py
+python scripts/run_ssl_finetune.py
+python scripts/run_baseline.py
+```
+
+## Notes
+
+* The scripts expect input files in `data/` (e.g., `kegg.gmt`, `pretrain.parquet`, `finetune.parquet`, `test.parquet`).
+* Outputs are written to `data/results_mapped/`, `data/pathways/`, and `results/`.
+
+
+
+
 
 Contact: kevin.dradjat@univ-evry.fr
