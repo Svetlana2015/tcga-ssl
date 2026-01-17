@@ -157,7 +157,8 @@ The mapping procedure is implemented in `mapping.py` and consists of the followi
 
 After mapping, the resulting gene expression matrices contain a unified and biologically consistent set of gene symbols while preserving all metadata columns. The mapped datasets are saved to disk for downstream analysis.
 
-Tutorial: use the [gseapy](https://gseapy.readthedocs.io/en/latest/gseapy_example.html#Single-Sample-GSEA-example) with [Mygene](https://docs.mygene.info/projects/mygene-py/en/latest/) package for the gene mapping. 
+Gene identifier mapping relies on the [MyGeneInfo](https://docs.mygene.info/projects/mygene-py/en/latest/) service, while pathway activity computation is performed using the [gseapy](https://gseapy.readthedocs.io/en/latest/gseapy_example.html#Single-Sample-GSEA-example) library (ssGSEA) with KEGG gene sets.
+
 
 ### 4. Pathway Score Computation (ssGSEA)
 
@@ -300,8 +301,7 @@ These results demonstrate that biologically informed self-supervised learning im
 ---
 
 ## Analysis and Discussion
-
-The experimental results highlight the importance of representation learning for high-dimensional transcriptomic data.  
+  
 Directly modeling gene-level expression vectors is challenging due to the large feature space and limited availability of labeled samples. In this context, pathway activity prediction introduces a biologically meaningful inductive bias that encourages the encoder to focus on coordinated gene programs rather than isolated gene-level variations.
 
 By using pathway profiles as a self-supervised pretext task, the model is guided toward learning structured latent representations that reflect underlying biological processes. The combination of pathway-level supervision with masked gene reconstruction and contrastive learning further promotes robustness and invariance to noise, leading to transferable representations.
@@ -352,7 +352,7 @@ pip install -r requirements.txt
 
 ### 4) Run pipeline 
 
-All the scripts used for pretraining and finetuning with the differents methods are available on the scripts folder.
+All scripts used for preprocessing, pretraining, fine-tuning, and evaluation are available in the scripts/ directory.
 
 Preprocessing
 Example command
