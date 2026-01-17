@@ -144,6 +144,10 @@ python scripts/run_ssl_finetune.py
 python scripts/run_baseline.py
 ```
 
+python -m scripts.run_preprocessing --expr data\raw\mRNA_coding.omics.parquet --labels data\raw\label.parquet --out_dir data --test_n 1000 --finetune_n 1000 --pretrain_n 7000
+
+
+
 ## Notes
 
 * The scripts expect input files in `data/` (e.g., `kegg.gmt`, `pretrain.parquet`, `finetune.parquet`, `test.parquet`).
