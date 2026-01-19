@@ -378,12 +378,16 @@ python -m scripts.make_pathways --input data/test.parquet --gmt data/kegg.gmt --
 python -m scripts.make_pathways --input data/finetune.parquet --gmt data/kegg.gmt --case_id_col caseID --name finetune 
 ```
 
+Creation of three files in data/pathways: pretrain_pathways.parquet, test_pathways.parquet, and finetune_pathways.parquet.
+
 Pretraining:
 Example command
 ```
 python -m scripts.run_ssl_pretrain --genes data/results_mapped/pretrain_mapped.parquet --pathways data/pathways/pretrain_pathways.parquet --save_dir experiments/ssl_pretrain
 
 ```
+The trained SSL model and its configuration are saved in experiments/ssl_pretrain/ (ssl_model.pth and config.json).
+
 
 Finetuning:
 Example command
