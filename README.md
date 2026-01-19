@@ -354,12 +354,15 @@ pip install -r requirements.txt
 ### 4) Run pipeline 
 
 All scripts used for preprocessing, pretraining, fine-tuning, and evaluation are available in the scripts/ directory.
+Upload the data to data/raw
 
 Preprocessing
 Example command
 ```
 python -m scripts.run_preprocessing --expr data\raw\mRNA_coding.omics.parquet --labels data\raw\label.parquet --out_dir data --test_n 1000 --finetune_n 1000 --pretrain_n 7000
 ```
+
+After preprocessing, three files will be created in the data folder: test.parquet, pretrain.parquet, and finetune.parquet.
 
 Baseline:
 Example command
