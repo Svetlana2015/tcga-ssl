@@ -373,7 +373,9 @@ python -m scripts.run_baseline --epochs 50 --n_repeats 5 --out results.npz
 Making pathways:
 Example command
 ``` 
-python -m scripts.make_pathways --input data/pretrain.parquet --gmt data/kegg.gmt --case_id_col caseID --name pretrain 
+python -m scripts.make_pathways --input data/pretrain.parquet --gmt data/kegg.gmt --case_id_col caseID --name pretrain
+python -m scripts.make_pathways --input data/test.parquet --gmt data/kegg.gmt --case_id_col caseID --name test
+python -m scripts.make_pathways --input data/finetune.parquet --gmt data/kegg.gmt --case_id_col caseID --name finetune 
 ```
 
 Pretraining:
